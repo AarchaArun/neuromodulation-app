@@ -1,123 +1,251 @@
 <?php
-
-// checks whether admin is logged in - only admin can edit the forms
+//checks whether admin is logged in - only admin can edit the record
 session_start();
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
     header("Location: login.php");
     exit;
 }
-?>
 
-<!-- header layout for bootstrap -->
-<?php require_once __DIR__ . '/../../header.php'; ?>
-
-<?php
+require_once __DIR__ . '/../../header.php';
 require_once __DIR__ . '/../../db.php';
-$id = $_GET['id'] ?? 0;
 
-// for Getting existing data
-$sql = "{CALL sp_GetFormByID(?)}";
-$params = [$id];
-$stmt = sqlsrv_query($dbConnection, $sql, $params);
-$form = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-
-// for handling form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $FirstName = $_POST['first_name'] ?? '';
-    $LastName  = $_POST['last_name'] ?? '';
-    $DOB       = $_POST['dob'] ?? '';
-    $Age       = $_POST['age'] ?? 0;
-    $scores = [];
-    for ($i = 1; $i <= 12; $i++) {
-        $scores[$i] = (int)($_POST["q$i"] ?? 0);
+/**
+ * Safely format SQLSRV date/datetime values which may come as DateTime objects or strings.
+ */
+function fmtDate($v, string $pattern = 'Y-m-d'): string {
+    if ($v instanceof DateTimeInterface) return $v->format($pattern);
+    if (is_string($v) && $v !== '') {
+        $ts = strtotime($v);
+        return $ts ? date($pattern, $ts) : '';
     }
-    $TotalScore = array_sum(array_slice($scores, 1));
+    return '';
+}
 
-    $sql = "{CALL sp_UpdateForm(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)}";
-    $params = [$id, $FirstName, $LastName, $DOB, $Age,
-        $scores[1], $scores[2], $scores[3], $scores[4], $scores[5],
-        $scores[6], $scores[7], $scores[8], $scores[9], $scores[10], $scores[11], $scores[12],
-        $TotalScore
+// Load ID from query string
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+if ($id <= 0) {
+    header('Location: /admin/index.php');
+    exit;
+}
+
+// Handle POST (save)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id         = (int)($_POST['id'] ?? 0);
+    $firstName  = trim($_POST['first_name'] ?? '');
+    $lastName   = trim($_POST['last_name'] ?? '');
+    $dob        = trim($_POST['dob'] ?? '');  // 'YYYY-MM-DD'
+    $age        = (int)($_POST['age'] ?? 0);
+
+    // Questions Q1–Q12
+    $q = [];
+    for ($i = 1; $i <= 12; $i++) {
+        $q[$i] = isset($_POST["q$i"]) && $_POST["q$i"] !== '' ? (int)$_POST["q$i"] : 0;
+    }
+
+    // Total score is Q2–Q12
+    $totalScore = 0;
+    for ($i = 2; $i <= 12; $i++) {
+        $totalScore += $q[$i];
+    }
+
+    // 18 placeholders to match update_PatientForm proc
+    $sql = "{CALL update_PatientForm(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}";
+    $params = [
+        $id,
+        $firstName,
+        $lastName,
+        $dob,
+        $age,
+        $q[1], $q[2], $q[3], $q[4], $q[5], $q[6], $q[7], $q[8], $q[9], $q[10], $q[11], $q[12],
+        $totalScore
     ];
 
-    $stmt = sqlsrv_query($dbConnection, $sql, $params);
-    if ($stmt) {
-        header("Location: view.php?id=$id");
+    $result = sqlsrv_query($dbConnection, $sql, $params);
+
+    if ($result === false) {
+        // TEMP: show error to debug if needed; you can comment this out once it works
+        echo "<div class='alert alert-danger'>Unable to save changes.</div>";
+        echo "<pre>" . print_r(sqlsrv_errors(), true) . "</pre>";
+    } else {
+        header('Location: /admin/index.php?updated=1');
         exit;
     }
 }
+
+// GET: load existing record for editing
+$sqlGet = "{CALL get_PatientFormById(?)}";
+$params = [$id];
+$res = sqlsrv_query($dbConnection, $sqlGet, $params);
+if ($res === false) {
+    echo "<div class='alert alert-danger'>Unable to load record.</div>";
+    require_once __DIR__ . '/../../footer.php';
+    exit;
+}
+$record = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC);
+if (!$record) {
+    echo "<div class='alert alert-warning'>Record not found.</div>";
+    require_once __DIR__ . '/../../footer.php';
+    exit;
+}
+
+// Pre-fill values from record
+$firstName  = (string)($record['FirstName'] ?? '');
+$lastName   = (string)($record['LastName'] ?? '');
+$dobStr     = fmtDate($record['DOB'] ?? null, 'Y-m-d');
+$ageVal     = (int)($record['Age'] ?? 0);
+
+$qVals = [];
+for ($i = 1; $i <= 12; $i++) {
+    $qVals[$i] = isset($record['Q' . $i]) ? (int)$record['Q' . $i] : 0;
+}
+$totalScore = (int)($record['TotalScore'] ?? 0);
+
+// Question texts
+$questions = [
+    1  => "How much relief have pain treatments or medications FROM THIS CLINIC provided? (0–100)",
+    2  => "Please rate your pain at its WORST in the past week. (0–10)",
+    3  => "Please rate your pain at its LEAST in the past week. (0–10)",
+    4  => "Please rate your pain on the AVERAGE. (0–10)",
+    5  => "How much pain do you have RIGHT NOW? (0–10)",
+    6  => "How much has pain interfered with your: General activity. (0–10)",
+    7  => "How much has pain interfered with your: Mood. (0–10)",
+    8  => "How much has pain interfered with your: Walking ability. (0–10)",
+    9  => "How much has pain interfered with your: Normal work (outside & housework). (0–10)",
+    10 => "How much has pain interfered with your: Relationships with other people. (0–10)",
+    11 => "How much has pain interfered with your: Sleep. (0–10)",
+    12 => "How much has pain interfered with your: Enjoyment of life. (0–10)",
+];
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edit Form</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-</head>
-<body class="bg-light">
-<div class="container py-4">
-    <h3 class="mb-4 text-center">Edit Record</h3>
-    <a href="view.php?id=<?= $form['ID'] ?>" class="btn btn-secondary mb-3">&larr; Cancel</a>
 
-    <form method="POST" class="card p-4 shadow-sm">
-        <div class="row g-3 mb-3">
-            <div class="col-md-4">
-                <label class="form-label">First Name</label>
-                <input type="text" name="first_name" value="<?= $form['FirstName'] ?>" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Surname</label>
-                <input type="text" name="last_name" value="<?= $form['LastName'] ?>" class="form-control">
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">DOB</label>
-                <input type="date" name="dob" id="dob" value="<?= $form['DOB']->format('Y-m-d') ?>" class="form-control">
-            </div>
-        </div>
-        <div class="mb-3">
-            <label class="form-label">Age</label>
-            <input type="number" name="age" id="age" value="<?= $form['Age'] ?>" class="form-control" readonly>
-        </div>
+<h4 class="mb-3">Edit Patient Form</h4>
 
-        <?php for ($i = 1; $i <= 12; $i++): ?>
-            <div class="mb-2">
-                <label class="form-label">Q<?= $i ?></label>
-                <input type="number" name="q<?= $i ?>" id="q<?= $i ?>" value="<?= $form["Q$i"] ?>" class="form-control question">
-            </div>
+<form method="post" action="">
+  <input type="hidden" name="id" value="<?= (int)$id ?>">
+
+  <!-- Patient details on one line -->
+  <div class="card mb-4">
+    <div class="card-header">Patient Details</div>
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">First name</label>
+          <input type="text" class="form-control" name="first_name"
+                 value="<?= htmlspecialchars($firstName) ?>" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Surname</label>
+          <input type="text" class="form-control" name="last_name"
+                 value="<?= htmlspecialchars($lastName) ?>" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Date of Birth</label>
+          <input type="date" class="form-control" name="dob" id="dob"
+                 value="<?= htmlspecialchars($dobStr) ?>" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Age</label>
+          <input type="number" class="form-control" name="age" id="age"
+                 value="<?= (int)$ageVal ?>" min="0" max="130" required>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BPI Questions -->
+  <div class="card mb-4">
+    <div class="card-header">Brief Pain Inventory (BPI)</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <?php for ($i = 1; $i <= 12; $i++):
+            $min = ($i === 1) ? 0 : 0;
+            $max = ($i === 1) ? 100 : 10;
+        ?>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Q<?= $i ?>. <?= htmlspecialchars($questions[$i]) ?></label>
+            <input type="number"
+                   class="form-control q-input"
+                   name="q<?= $i ?>"
+                   id="q<?= $i ?>"
+                   min="<?= $min ?>"
+                   max="<?= $max ?>"
+                   step="1"
+                   value="<?= (int)$qVals[$i] ?>"
+                   required>
+          </div>
         <?php endfor; ?>
+      </div>
+    </div>
+  </div>
 
-        <div class="mb-3">
-            <label class="form-label">Total Score</label>
-            <input type="text" id="total_score" value="<?= $form['TotalScore'] ?>" class="form-control fw-bold" readonly>
+  <!-- Total Score -->
+  <div class="card mb-3">
+    <div class="card-header">Total Score</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Total (Q2–Q12)</label>
+          <input type="number"
+                 class="form-control fw-bold"
+                 name="total_score_display"
+                 id="total_score_display"
+                 value="<?= (int)$totalScore ?>"
+                 readonly>
         </div>
+      </div>
+    </div>
+  </div>
 
-        <button type="submit" class="btn btn-primary w-100">Save Changes</button>
-    </form>
-</div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-secondary" href="/admin/index.php">Cancel</a>
+    <button type="submit" class="btn btn-primary">Save changes</button>
+  </div>
+</form>
 
+<!-- JS: auto-calc age & total score -->
 <script>
-$("#dob").on("change", function() {
-    const dob = new Date($(this).val());
-    if (!isNaN(dob)) {
-        const diff = Date.now() - dob.getTime();
-        const ageDate = new Date(diff);
-        const age = Math.abs(ageDate.getUTCFullYear() - 1970);
-        $("#age").val(age);
-    }
-});
+function calcAgeFromDob(dobStr) {
+  if (!dobStr) return '';
+  const dob = new Date(dobStr);
+  if (isNaN(dob.getTime())) return '';
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age >= 0 ? age : '';
+}
 
-$(".question").on("input", function() {
-    let total = 0;
+document.addEventListener('DOMContentLoaded', () => {
+  const dobInput = document.getElementById('dob');
+  const ageInput = document.getElementById('age');
+  const totalInput = document.getElementById('total_score_display');
+
+  function recomputeTotal() {
+    let sum = 0;
     for (let i = 2; i <= 12; i++) {
-        total += parseInt($("#q" + i).val()) || 0;
+      const el = document.getElementById('q' + i);
+      const v = parseInt(el && el.value ? el.value : '0', 10);
+      sum += isNaN(v) ? 0 : v;
     }
-    $("#total_score").val(total);
+    totalInput.value = sum;
+  }
+
+  // initial total compute
+  recomputeTotal();
+
+  // update total on any q-change
+  for (let i = 1; i <= 12; i++) {
+    const el = document.getElementById('q' + i);
+    if (el) el.addEventListener('input', recomputeTotal);
+  }
+
+  // auto age from dob
+  if (dobInput) {
+    dobInput.addEventListener('change', () => {
+      const a = calcAgeFromDob(dobInput.value);
+      if (a !== '') ageInput.value = a;
+    });
+  }
 });
 </script>
-</body>
-</html>
 
-<!-- footer layout for bootstrap -->
 <?php require_once __DIR__ . '/../../footer.php'; ?>
