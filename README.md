@@ -163,6 +163,20 @@ Content:
 
 ---
 
+### Additional Enhancement: Filtering & Sorting (Optional)
+
+    The Admin panel includes a small usability improvement: the ability to filter and sort submitted records directly in the browser.
+
+    - A search box allows real-time filtering by name, age, DOB, score, or submission date.
+
+    - Table columns show up/down arrows for sorting.
+
+    - Sorting works for text, numbers, and dates.
+
+    All functionality is implemented using lightweight JavaScript — no plugins required.
+    
+---
+
 ### Notes
 
     This project was created for a technical evaluation purpose only.

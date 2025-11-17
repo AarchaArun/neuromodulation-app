@@ -1,44 +1,14 @@
 /* style.css — minimal custom styling for Neuromodulation app */
 
-body {
-    background-color: #f8f9fa;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    padding: 20px;
-}
-
-.card {
-    margin-bottom: 20px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-
-h2 {
-    color: #0056b3;
-}
-
-.form-label {
-    font-weight: 500;
-}
-
-.btn-primary {
-    background-color: #007bff;
-    border: none;
-}
-
-.btn-primary:hover {
-    background-color: #0069d9;
-}
-
-.table {
-    background-color: #fff;
-    border-radius: 12px;
-}
-
+/* Layout & base styling */
 html, body {
     height: 100%;
 }
 
 body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    padding: 20px;
     display: flex;
     flex-direction: column;
 }
@@ -52,4 +22,103 @@ footer {
     background-color: #f1f1f1;
     color: #555;
     border-top: 1px solid #ddd;
+}
+
+/* Cards & headings */
+.card {
+    margin-bottom: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+h2 {
+    color: #0056b3;
+}
+
+/* Forms & buttons */
+.form-label {
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    border: none;
+}
+
+.btn-primary:hover {
+    background-color: #0069d9;
+}
+
+/* Tables */
+.table {
+    background-color: #fff;
+    border-radius: 12px;
+}
+
+/* --- Sorting styles for admin table --- */
+
+/* All sortable headers: pointer cursor */
+th.sortable {
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Make sure the dark header works with arrows */
+thead.table-dark th.sortable {
+    position: relative;
+}
+
+/* Ascending sort arrow (UP) */
+thead.table-dark th.sortable.sort-asc::after {
+    content: "▲";
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: #ffffff;
+}
+
+/* Descending sort arrow (DOWN) */
+thead.table-dark th.sortable.sort-desc::after {
+    content: "▼";
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: #ffffff;
+}
+
+/* Slight hover effect for sortable headers */
+thead.table-dark th.sortable:hover {
+    background-color: #343a40 !important; /* slightly lighter than pure black */
+}
+
+/* Container for both arrows */
+.sort-icons {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 0.75rem;
+}
+
+/* Stack arrows vertically */
+.sort-up, .sort-down {
+    display: block;
+    line-height: 0.8rem;
+    color: #ffffff;
+    cursor: pointer;
+}
+
+/* Slight hover highlight */
+.sort-up:hover,
+.sort-down:hover {
+    color: #ffeb3b; /* yellow-ish highlight */
+}
+
+/* Reduce column shift by reserving space */
+th.sortable {
+    position: relative;
+    padding-right: 18px;
 }
